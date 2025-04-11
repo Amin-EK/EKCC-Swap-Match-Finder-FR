@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EKCC Swap Match Finder</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 700px;
+      margin: auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    input, select, button {
+      padding: 0.5rem;
+      margin: 0.5rem 0;
+      width: 100%;
+      font-size: 1rem;
+    }
+    table {
+      width: 100%;
+      margin-top: 1rem;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 0.5rem;
+      text-align: center;
+    }
+    .match {
+      background-color: #d4edda;
+    }
+    .staff-cell {
+      animation: wink 1s infinite;
+    }
+    @keyframes wink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.2; }
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>EKCC Swap Match Finder</h2>
+    <form id="swapForm">
+      <label for="staffNumber">Staff Number (6 digits only):</label>
+      <div style="display: flex; align-items: center;">
+        <span style="margin-right: 8px; animation: wink 1s infinite;" id="sPrefix">S</span>
+        <input type="text" id="staffNumber" placeholder="e.g. 123456" required pattern="\d{6}" style="flex: 1;" />
+      </div>
+      <label for="giveShift">Shift You Want to Give Away:</label>
+      <select id="giveShift" required>
+        <option value="">Select Shift</option>
+        <option value="OFF">OFF</option>
+        <option value="05:00">05:00</option>
+        <option value="07:00">07:00</option>
+        <option value="10:00">10:00</option>
+        <option value="12:00">12:00</option>
+        <option value="13:30">13:30</option>
+        <option value="15:00">15:00</option>
+        <option value="17:00">17:00</option>
+        <option value="21:00">21:00</option>
+      </select>
+      <label for="wantShift">Shift You Want:</label>
+      <select id="wantShift" required>
+        <option value="">Select Shift</option>
+        <option value="OFF">OFF</option>
+        <option value="05:00">05:00</option>
+        <option value="07:00">07:00</option>
+        <option value="10:00">10:00</option>
+        <option value="12:00">12:00</option>
+        <option value="13:30">13:30</option>
+        <option value="15:00">15:00</option>
+        <option value="17:00">17:00</option>
+        <option value="21:00">21:00</option>
+      </select>
+
+      <div id="shiftDateSection">
+        <label for="swapDate">Date (YYYY-MM-DD):</label>
+        <input type="date" id="swapDate" required />
+      </div>
+
+      <div id="offDateSection" class="hidden">
+        <label for="offDateGive">Your Off Date:</label>
+        <input type="date" id="offDateGive" />
+        <label for="offDateWant">Preferred Off Date:</label>
+        <input type="date" id="offDateWant" />
+      </div>
+
+      <button type="submit">Submit Swap Request</button>
+    </form>
+
+    <h3>Find a Match</h3>
+    <label for="searchWant">I want:</label>
+    <select id="searchWant">
+      <option value="OFF">OFF</option>
+      <option value="05:00">05:00</option>
+      <option value="07:00">07:00</option>
+      <option value="10:00">10:00</option>
+      <option value="12:00">12:00</option>
+      <option value="13:30">13:30</option>
+      <option value="15:00">15:00</option>
+      <option value="17:00">17:00</option>
+      <option value="21:00">21:00</option>
+    </select>
+    <label for="searchGive">And I'm giving away:</label>
+    <select id="searchGive">
+      <option value="OFF">OFF</option>
+      <option value="05:00">05:00</option>
+      <option value="07:00">07:00</option>
+      <option value="10:00">10:00</option>
+      <option value="12:00">12:00</option>
+      <option value="13:30">13:30</option>
+      <option value="15:00">15:00</option>
+      <option value="17:00">17:00</option>
+      <option value="21:00">21:00</option>
+    </select>
+    <label for="searchDate">On this date:</label>
+    <input type="date" id="searchDate" />
+    <button onclick="findMatches()">Find Matching Swaps</button>
+
+    <h3>Available Swap Requests</h3>
+    <label><input type="checkbox" id="showMineOnly"> Show mine only</label>
+    <table>
+      <thead>
+        <tr><th>Staff #</th><th>Date</th><th>Gives</th><th>Wants</th><th>Delete</th></tr>
+      </thead>
+      <tbody id="swapTable"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const shifts = ["OFF", "05:00", "07:00", "10:00", "12:00", "13:30", "15:00", "17:00", "21:00"];
+
+    const giveSelect = document.getElementById("giveShift");
+    const wantSelect = document.getElementById("wantShift");
+    const searchGive = document.getElementById("searchGive");
+    const searchWant = document.getElementById("searchWant");
+    const searchDate = document.getElementById("searchDate");
+    const swapTable = document.getElementById("swapTable");
+    const showMineOnly = document.getElementById("showMineOnly");
+
+    const shiftDateSection = document.getElementById("shiftDateSection");
+    const offDateSection = document.getElementById("offDateSection");
+
+    let loggedInStaff = "";
+
+    shifts.forEach(shift => {
+      [giveSelect, wantSelect, searchGive, searchWant].forEach(select => {
+        const option = document.createElement("option");
+        option.value = shift;
+        option.textContent = shift;
+        select.appendChild(option.cloneNode(true));
+      });
+    });
+
+    giveSelect.addEventListener("change", toggleDateSections);
+    wantSelect.addEventListener("change", toggleDateSections);
+    showMineOnly.addEventListener("change", () => renderSwaps());
+
+    function toggleDateSections() {
+      const isOffGive = giveSelect.value === "OFF";
+      const isOffWant = wantSelect.value === "OFF";
+      const isOff = isOffGive || isOffWant;
+
+      shiftDateSection.classList.toggle("hidden", isOff);
+      offDateSection.classList.toggle("hidden", !isOff);
+
+      if (isOffGive) {
+        document.getElementById("offDateGive").setAttribute("required", "required");
+        document.getElementById("offDateWant").setAttribute("required", "required");
+      } else {
+        document.getElementById("offDateGive").removeAttribute("required");
+        document.getElementById("offDateWant").removeAttribute("required");
+      }
+    }
+
+    let swaps = JSON.parse(localStorage.getItem("swaps")) || [];
+    const today = new Date().toISOString().split('T')[0];
+    swaps = swaps.filter(swap => {
+      const dates = swap.date.split(" ➝ ");
+      return dates.every(d => d >= today);
+    });
+    localStorage.setItem("swaps", JSON.stringify(swaps));
+
+    function renderSwaps(filter = null) {
+      swapTable.innerHTML = "";
+      let foundMatch = false;
+
+      swaps.forEach((swap, index) => {
+        const dates = swap.date.split(" ➝ ");
+        if (dates.some(d => d < today)) return;
+
+        if (showMineOnly.checked && swap.staff !== loggedInStaff) return;
+
+        let isMatch = false;
+        if (filter) {
+          isMatch = swap.give === filter.want && swap.want === filter.give && (!filter.date || swap.date.includes(filter.date));
+        }
+
+        const row = document.createElement("tr");
+        if (isMatch) {
+          row.classList.add("match");
+          foundMatch = true;
+        }
+        row.innerHTML = `
+          <td class="staff-cell">${swap.staff}</td>
+          <td>${swap.date}</td>
+          <td>${swap.give}</td>
+          <td>${swap.want}</td>
+          <td><button onclick="deleteSwap(${index})">Delete</button></td>
+        `;
+        swapTable.appendChild(row);
+      });
+
+      if (filter && !foundMatch && filter.give && filter.want && filter.date) {
+        const isOffMatch = filter.give === "OFF" && filter.want === "OFF";
+        const isShiftMatch = filter.give !== "OFF" && filter.want !== "OFF";
+
+        if (isOffMatch || isShiftMatch) {
+          const staffInput = prompt("No match found. Enter your Staff Number to submit this swap request:", "");
+          if (/^\d{6}$/.test(staffInput)) {
+            loggedInStaff = "S" + staffInput;
+            swaps.push({ staff: loggedInStaff, give: filter.give, want: filter.want, date: filter.date });
+            localStorage.setItem("swaps", JSON.stringify(swaps));
+            renderSwaps();
+          } else if (staffInput) {
+            alert("Invalid staff number. Please enter 6 digits only.");
+          }
+        } else {
+          alert("Swaps between OFF and shifts are not allowed.");
+        }
+      }
+    }
+
+    function deleteSwap(index) {
+      if (confirm("Are you sure you want to delete this swap request?")) {
+        swaps.splice(index, 1);
+        localStorage.setItem("swaps", JSON.stringify(swaps));
+        renderSwaps();
+      }
+    }
+
+    document.getElementById("swapForm").addEventListener("submit", e => {
+      e.preventDefault();
+      const staffInput = document.getElementById("staffNumber").value;
+      if (!/^\d{6}$/.test(staffInput)) {
+        alert("Please enter a valid 6-digit staff number.");
+        return;
+      }
+      loggedInStaff = "S" + staffInput;
+      const give = giveSelect.value;
+      const want = wantSelect.value;
+
+      const isOffMatch = give === "OFF" && want === "OFF";
+      const isShiftMatch = give !== "OFF" && want !== "OFF";
+
+      if (!(isOffMatch || isShiftMatch)) {
+        alert("You can only swap OFF with OFF, or shifts with shifts. Not both.");
+        return;
+      }
+
+      let date = "";
+      if (isOffMatch) {
+        const offGive = document.getElementById("offDateGive").value;
+        const offWant = document.getElementById("offDateWant").value;
+        if (!offGive || !offWant || offGive < today || offWant < today) {
+          alert("Please enter valid future off dates.");
+          return;
+        }
+        date = offGive + " ➝ " + offWant;
+      } else {
+        date = document.getElementById("swapDate").value;
+        if (!date || date < today) {
+          alert("Please select a valid future date.");
+          return;
+        }
+      }
+
+      swaps.push({ staff: loggedInStaff, give, want, date });
+      localStorage.setItem("swaps", JSON.stringify(swaps));
+      renderSwaps();
+      e.target.reset();
+      shiftDateSection.classList.remove("hidden");
+      offDateSection.classList.add("hidden");
+    });
+
+    function findMatches() {
+      const give = searchGive.value;
+      const want = searchWant.value;
+      const date = searchDate.value;
+      renderSwaps({ give, want, date });
+    }
+
+    renderSwaps();
+  </script>
+</body>
+</html>
